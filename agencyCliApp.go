@@ -19,61 +19,61 @@ type Data struct {
 	Worker  int
 }
 
+type Service struct {
+	reader      *csv.Reader
+	writer      *csv.Writer
+	csv         *os.File
+	recordCount int
+}
+
 func main() {
-	fmt.Println("===Agency Cli App===")
+	fmt.Println("===Agency CLI App===")
 
-	_, err := os.Stat("./data/data.csv")
-	if os.IsNotExist(err) {
-		file, err := os.Create("./data/data.csv")
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		defer file.Close()
+	initializeCSVFile()
 
-		writer := csv.NewWriter(file)
-		header := []string{"ID", "Name", "Phone", "Address", "Region", "Worker"}
-		err = writer.Write(header)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		writer.Flush()
-	}
-
-	csvFile, err := os.OpenFile("./data/data.csv", os.O_RDWR|os.O_APPEND|os.O_CREATE, 0644)
+	csvFile, err := os.OpenFile("./data/data.csv", os.O_RDWR|os.O_APPEND, 0644)
 	if err != nil {
 		fmt.Println(err)
+		return
 	}
 	defer csvFile.Close()
 
-	reader := csv.NewReader(csvFile)
-	writer := csv.NewWriter(csvFile)
+	svc := Service{
+		reader: csv.NewReader(csvFile),
+		writer: csv.NewWriter(csvFile),
+		csv:    csvFile,
+	}
 
 	region := flag.String("region", "no region", "region to use")
 	command := flag.String("command", "no command", "the command to execute")
 	flag.Parse()
 
 	for {
-		runCommand(*command, *region, reader, writer)
+		err := svc.readCSVFile()
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 
-		fmt.Println("please enter another command and region:")
-		fmt.Scan(command, region)
+		svc.runCommand(*command, *region)
+
+		fmt.Println("please enter another command or exit:")
+		fmt.Scan(command)
 	}
 }
 
-func runCommand(command string, region string, reader *csv.Reader, writer *csv.Writer) {
+func (svc Service) runCommand(command string, region string) {
 	switch command {
 	case "list":
-		commandList(region, reader)
+		svc.commandList(region)
 	case "get":
-		commandGet(region, reader)
+		svc.commandGet(region)
 	case "create":
-		commandCreate(region, reader, writer)
+		svc.commandCreate(region)
 	case "edit":
-		commandEdit(region, reader, writer)
+		svc.commandEdit(region)
 	case "status":
-		commandStatus(region, reader)
+		svc.commandStatus(region)
 	case "exit":
 		os.Exit(0)
 	default:
@@ -81,21 +81,39 @@ func runCommand(command string, region string, reader *csv.Reader, writer *csv.W
 	}
 }
 
-func commandList(region string, reader *csv.Reader) { // list all agencies in a region
+func (svc Service) commandList(region string) {
 	var agencies []Data
+
+	_, err := svc.csv.Seek(0, 0)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	_, err = svc.reader.Read()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
 	for {
-		line, err := reader.Read()
-		if err != nil {
-			break
+		line, err := svc.reader.Read()
+		if err == io.EOF {
+			break // End of file reached
+		} else if err != nil {
+			fmt.Println(err)
+			return
 		}
+
 		if line[2] != region {
 			id, err := strconv.Atoi(line[0])
 			if err != nil {
 				fmt.Println(err)
+				continue
 			}
 			worker, err := strconv.Atoi(line[5])
 			if err != nil {
 				fmt.Println(err)
+				continue
 			}
 			agencies = append(agencies, Data{
 				ID:      id,
@@ -106,12 +124,12 @@ func commandList(region string, reader *csv.Reader) { // list all agencies in a 
 				Worker:  worker,
 			})
 		}
-
 	}
+
 	fmt.Println(agencies)
 }
 
-func commandGet(region string, reader *csv.Reader) { // get a specific agency
+func (svc Service) commandGet(region string) { // get a specific agency
 	var agency Data
 	scanner := bufio.NewScanner(os.Stdin)
 
@@ -120,7 +138,7 @@ func commandGet(region string, reader *csv.Reader) { // get a specific agency
 	num := scanner.Text()
 
 	for {
-		line, err := reader.Read()
+		line, err := svc.reader.Read()
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -148,9 +166,8 @@ func commandGet(region string, reader *csv.Reader) { // get a specific agency
 	}
 }
 
-func commandCreate(region string, reader *csv.Reader, writer *csv.Writer) { // create a new agency
+func (svc Service) commandCreate(region string) { // create a new agency
 	var agency Data
-	var tmp int
 	scanner := bufio.NewScanner(os.Stdin)
 
 	fmt.Println("please enter your name:")
@@ -165,6 +182,10 @@ func commandCreate(region string, reader *csv.Reader, writer *csv.Writer) { // c
 	scanner.Scan()
 	agency.Address = scanner.Text()
 
+	fmt.Println("please enter your region:")
+	scanner.Scan()
+	agency.Region = scanner.Text()
+
 	fmt.Println("please enter count of your worker:")
 	scanner.Scan()
 	workerString := scanner.Text()
@@ -174,24 +195,16 @@ func commandCreate(region string, reader *csv.Reader, writer *csv.Writer) { // c
 	}
 	agency.Worker = worker
 
-	agency.Region = region
-
-	lines, err := reader.ReadAll()
+	agency.ID = svc.recordCount
+	err = svc.writer.Write([]string{strconv.Itoa(agency.ID), agency.Name, agency.Phone, agency.Address, agency.Region, strconv.Itoa(agency.Worker)})
 	if err != nil {
 		fmt.Println(err)
 	}
-	tmp = len(lines)
-
-	agency.ID = tmp
-	err = writer.Write([]string{strconv.Itoa(agency.ID), agency.Name, agency.Phone, agency.Address, agency.Region, strconv.Itoa(agency.Worker)})
-	if err != nil {
-		fmt.Println(err)
-	}
-	writer.Flush()
+	svc.writer.Flush()
 	fmt.Println(agency)
 }
 
-func commandEdit(region string, reader *csv.Reader, writer *csv.Writer) {
+func (svc Service) commandEdit(region string) {
 	var agency Data
 	scanner := bufio.NewScanner(os.Stdin)
 
@@ -204,7 +217,7 @@ func commandEdit(region string, reader *csv.Reader, writer *csv.Writer) {
 	}
 
 	for {
-		line, err := reader.Read()
+		line, err := svc.reader.Read()
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -225,7 +238,7 @@ func commandEdit(region string, reader *csv.Reader, writer *csv.Writer) {
 			}
 			for {
 				fmt.Printf("%+v\nWhich one do you want to edit or exit to save:\n", agency)
-				writer.Flush()
+				svc.writer.Flush()
 				scanner.Scan()
 				field := scanner.Text()
 
@@ -265,7 +278,7 @@ func commandEdit(region string, reader *csv.Reader, writer *csv.Writer) {
 
 					agency.Worker = newWorker
 				case "exit":
-					err := writer.Write([]string{
+					err := svc.writer.Write([]string{
 						strconv.Itoa(agency.ID),
 						agency.Name,
 						agency.Region,
@@ -276,7 +289,7 @@ func commandEdit(region string, reader *csv.Reader, writer *csv.Writer) {
 					if err != nil {
 						fmt.Println(err)
 					}
-					writer.Flush()
+					svc.writer.Flush()
 					return
 				default:
 					fmt.Println("Not a valid field!!!")
@@ -286,10 +299,10 @@ func commandEdit(region string, reader *csv.Reader, writer *csv.Writer) {
 	}
 }
 
-func commandStatus(region string, reader *csv.Reader) {
+func (svc Service) commandStatus(region string) {
 	var workerTotal, agencies int
 	for {
-		line, err := reader.Read()
+		line, err := svc.reader.Read()
 		if err != nil {
 			break
 		}
@@ -303,4 +316,40 @@ func commandStatus(region string, reader *csv.Reader) {
 		}
 	}
 	fmt.Printf("Total Agency in %s: %d\nTotal Worker in %s: %d\n", region, agencies, region, workerTotal)
+}
+
+func initializeCSVFile() {
+	_, err := os.Stat("./data/data.csv")
+	if os.IsNotExist(err) {
+		file, err := os.Create("./data/data.csv")
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		defer file.Close()
+
+		writer := csv.NewWriter(file)
+		defer writer.Flush()
+
+		header := []string{"ID", "Name", "Phone", "Address", "Region", "Worker"}
+		if err := writer.Write(header); err != nil {
+			fmt.Println(err)
+			return
+		}
+	}
+}
+
+func (svc *Service) readCSVFile() error {
+	_, err := svc.csv.Seek(0, 0)
+	if err != nil {
+		return err
+	}
+
+	records, err := svc.reader.ReadAll()
+	if err != nil {
+		return err
+	}
+
+	svc.recordCount = len(records)
+	return nil
 }
