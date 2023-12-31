@@ -7,7 +7,7 @@ This project is a small command-line interface (CLI) program written in Golang t
 
 **command**: Specifies the action to be performed. It can take one of the following values:
 
-Command  | Second Header
+Command  | Discription
 ------------- | -------------
 list  | Lists the representatives in the specified region.
 get  |  Retrieves detailed information about a specific representative in the given region. Requires the user to provide the representative's ID.
