@@ -1,4 +1,4 @@
-# AgencyCliApp
+# GoAgencyOps
 ## Overview
 This project is a small command-line interface (CLI) program written in Golang to manage representatives and their information in different regions of a country. The CLI supports the following flags: `command` and `region`.
 
