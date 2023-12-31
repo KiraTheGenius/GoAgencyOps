@@ -16,6 +16,8 @@ edit  | Edits the information of an existing representative. Requires the user t
 status |  Displays the number of representatives and total employees in the specified region.
 
 ## Usage 
+Before starting, make sure to create a `data` folder in the root directory of the project.
+
 ```
 go run agencyCliApp.go --command <command> --region <region>
 ```
