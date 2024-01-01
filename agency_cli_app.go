@@ -138,6 +138,7 @@ func (svc Service) commandGet(region string) { // get a specific agency
 	scanner.Scan()
 	num := scanner.Text()
 
+	svc.csv.Seek(0, 0)
 	for {
 		line, err := svc.reader.Read()
 		if err != nil {
@@ -327,6 +328,7 @@ func (svc Service) commandEdit(region string) {
 
 func (svc Service) commandStatus(region string) {
 	var workerTotal, agencies int
+	svc.csv.Seek(0, 0)
 	for {
 		line, err := svc.reader.Read()
 		if err != nil {
