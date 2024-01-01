@@ -97,9 +97,10 @@ func (svc Service) commandList(region string) {
 
 	for {
 		line, err := svc.reader.Read()
-		if err == io.EOF {
-			break // End of file reached
-		} else if err != nil {
+		if err != nil {
+			if err == io.EOF {
+				break // End of file reached
+			}
 			fmt.Println(err)
 			return
 		}
@@ -205,7 +206,7 @@ func (svc Service) commandCreate(region string) { // create a new agency
 }
 
 func (svc Service) commandEdit(region string) {
-	var agency Data
+	var agencies []Data
 	scanner := bufio.NewScanner(os.Stdin)
 
 	fmt.Println("Please enter your id:")
@@ -214,8 +215,11 @@ func (svc Service) commandEdit(region string) {
 	id, err := strconv.Atoi(num)
 	if err != nil {
 		fmt.Println(err)
+		return
 	}
 
+	svc.csv.Seek(0, 0)
+	svc.reader.Read()
 	for {
 		line, err := svc.reader.Read()
 		if err != nil {
@@ -223,80 +227,102 @@ func (svc Service) commandEdit(region string) {
 				break
 			}
 			fmt.Println(err)
-		} else if line[0] == num {
-			worker, err := strconv.Atoi(line[5])
-			if err != nil {
-				fmt.Println(err)
-			}
-			agency = Data{
-				ID:      id,
-				Name:    line[1],
-				Region:  line[2],
-				Phone:   line[3],
-				Address: line[4],
-				Worker:  worker,
-			}
-			for {
-				fmt.Printf("%+v\nWhich one do you want to edit or exit to save:\n", agency)
-				svc.writer.Flush()
+			continue
+		}
+
+		idReal, err := strconv.Atoi(line[0])
+		if err != nil {
+			fmt.Println(err)
+		}
+		worker, err := strconv.Atoi(line[5])
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		agency := Data{
+			ID:      idReal,
+			Name:    line[1],
+			Region:  line[2],
+			Phone:   line[3],
+			Address: line[4],
+			Worker:  worker,
+		}
+		agencies = append(agencies, agency)
+	}
+
+	found := false
+	for i, agency := range agencies {
+		if agency.ID == id {
+			found = true
+			fmt.Printf("%+v\nWhich one do you want to edit or exit to save:\n", agency)
+			svc.writer.Flush()
+			scanner.Scan()
+			field := scanner.Text()
+
+			switch field {
+			case "Name":
+				fmt.Println("Please enter the new name:")
 				scanner.Scan()
-				field := scanner.Text()
-
-				switch field {
-				case "Name":
-					fmt.Println("Please enter the new name:")
-					scanner.Scan()
-					newName := scanner.Text()
-
-					agency.Name = newName
-				case "Region":
-					fmt.Println("Please enter the new region:")
-					scanner.Scan()
-					newRegion := scanner.Text()
-
-					agency.Region = newRegion
-				case "Phone":
-					fmt.Println("Please enter the new phone:")
-					scanner.Scan()
-					newPhone := scanner.Text()
-
-					agency.Phone = newPhone
-				case "Address":
-					fmt.Println("Please enter the new address:")
-					scanner.Scan()
-					newAddress := scanner.Text()
-
-					agency.Address = newAddress
-				case "Worker":
-					fmt.Println("Please enter the new worker count:")
-					scanner.Scan()
-					newWorkerString := scanner.Text()
-					newWorker, err := strconv.Atoi(newWorkerString)
-					if err != nil {
-						fmt.Println(err)
-					}
-
-					agency.Worker = newWorker
-				case "exit":
-					err := svc.writer.Write([]string{
-						strconv.Itoa(agency.ID),
-						agency.Name,
-						agency.Region,
-						agency.Phone,
-						agency.Address,
-						strconv.Itoa(agency.Worker),
-					})
-					if err != nil {
-						fmt.Println(err)
-					}
-					svc.writer.Flush()
-					return
-				default:
-					fmt.Println("Not a valid field!!!")
+				newName := scanner.Text()
+				agencies[i].Name = newName
+			case "Region":
+				fmt.Println("Please enter the new region:")
+				scanner.Scan()
+				newRegion := scanner.Text()
+				agencies[i].Region = newRegion
+			case "Phone":
+				fmt.Println("Please enter the new phone:")
+				scanner.Scan()
+				newPhone := scanner.Text()
+				agencies[i].Phone = newPhone
+			case "Address":
+				fmt.Println("Please enter the new address:")
+				scanner.Scan()
+				newAddress := scanner.Text()
+				agencies[i].Address = newAddress
+			case "Worker":
+				fmt.Println("Please enter the new worker count:")
+				scanner.Scan()
+				newWorkerString := scanner.Text()
+				newWorker, err := strconv.Atoi(newWorkerString)
+				if err != nil {
+					fmt.Println(err)
 				}
+				agencies[i].Worker = newWorker
+			default:
+				fmt.Println("Not a valid field!!!")
 			}
 		}
 	}
+
+	if !found {
+		fmt.Println("Record not found.")
+		return
+	}
+
+	svc.csv.Truncate(0)
+	svc.writer = csv.NewWriter(svc.csv)
+	header := []string{"ID", "Name", "Phone", "Address", "Region", "Worker"}
+	if err := svc.writer.Write(header); err != nil {
+		fmt.Println(err)
+		return
+	}
+	svc.csv.Seek(0, 0)
+	for _, agency := range agencies {
+		err := svc.writer.Write([]string{
+			strconv.Itoa(agency.ID),
+			agency.Name,
+			agency.Region,
+			agency.Phone,
+			agency.Address,
+			strconv.Itoa(agency.Worker),
+		})
+		if err != nil {
+			fmt.Println(err)
+		}
+		svc.writer.Flush()
+	}
+	fmt.Println("Record successfully edited and saved.")
 }
 
 func (svc Service) commandStatus(region string) {

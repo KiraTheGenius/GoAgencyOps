@@ -1,3 +1,3 @@
-module github.com/KiraTheGenius/AgencyCliApp
+module agency_cli_app
 
 go 1.21.1
